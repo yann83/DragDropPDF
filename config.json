@@ -1,0 +1,24 @@
+{
+  "path": "D:/Mes Telechargements",
+  "pics": {
+    "high": "pdf.jpg",
+    "medium": "pdfmedium.jpg",
+    "low": "pdflow.jpg"
+  },
+  "current": {
+    "low": "pdflow.jpg"
+  },
+  "high": {
+    "dPDFSETTINGS": "/printer"
+  },
+  "medium": {
+    "dPDFSETTINGS": "/ebook",
+    "sColorConversionStrategy": "Gray",
+    "dProcessColorModel": "/DeviceGray"
+  },
+  "low": {
+    "dPDFSETTINGS": "/screen",
+    "sColorConversionStrategy": "Gray",
+    "dProcessColorModel": "/DeviceGray"
+  }
+}
