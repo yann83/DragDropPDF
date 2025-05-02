@@ -1,5 +1,12 @@
 {
-  "path": "D:/Mes Telechargements",
+  "path": "C:/temp",
+  "base_args": [
+    "-sDEVICE=pdfwrite",
+    "-dNOPAUSE",
+    "-dQUIET",
+    "-dBATCH",
+    "-dCompatibilityLevel=1.4"
+  ],
   "pics": {
     "high": "pdf.jpg",
     "medium": "pdfmedium.jpg",

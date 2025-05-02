@@ -7,68 +7,74 @@ from PySide6.QtCore import Qt, QPoint
 from PySide6.QtGui import QColor, QPainter, QAction, QPixmap, QDragEnterEvent, QDropEvent
 
 from core import GhostConverter
+from config import ConfigJson
 
 
 class CarreRouge(QWidget):
     def __init__(self):
         super().__init__()
 
-        # Chargement de la configuration
+        config_json = ConfigJson(Path("config.json"))
+        self.config_json_path = config_json.determine_config_path()
+
+        # Loading the configuration
         self.config = self.charger_config()
 
-        # Configuration de la fenêtre
-        self.setWindowTitle("DropPDF")  # Titre de la fenêtre
-        self.setFixedSize(100, 100)  # Taille fixe de 100x100 pixels
+        # Window configuration
+        self.setWindowTitle("DropPDF")  # window title
+        self.setFixedSize(100, 100)  # Fixed size of 100x100 pixels
 
-        # Supprimer les bordures de la fenêtre et forcer le premier plan
+        # Remove window borders and force foreground
         self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint |  # Suppression des bordures
-            Qt.WindowType.WindowStaysOnTopHint  # Fenêtre toujours au premier plan
+            Qt.WindowType.FramelessWindowHint |  # Removing borders
+            Qt.WindowType.WindowStaysOnTopHint  # Window always in the foreground
         )
 
-        # Autoriser le suivi de la souris pour le clic droit
+        # Allow mouse tracking for right click
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.afficher_menu)
 
-        # Positionner le carré en bas à droite de l'écran, à 100 pixels du bord
-        # Obtenir les dimensions de l'écran
+        # Position the square in the bottom right corner of the screen, 100 pixels from the edge
+        # Get the screen dimensions
         screen_rect = QApplication.primaryScreen().geometry()
         screen_width = screen_rect.width()
         screen_height = screen_rect.height()
 
-        # Calculer la position (bas droite à 100 pixels du bord)
+        # Calculate position (bottom right 100 pixels from edge)
         pos_x = screen_width - self.width() - 100
         pos_y = screen_height - self.height() - 100
 
-        # Appliquer la position
+        # Apply position
         self.move(pos_x, pos_y)
 
-        # Déterminer le niveau et l'image actuels à partir de la configuration
+        # Determine current level and image from configuration
         self.niveau_actuel = next(iter(self.config["current"].keys()))
         self.image_actuelle = self.config["current"][self.niveau_actuel]
-        print(f"Niveau actuel: {self.niveau_actuel}, Image: {self.image_actuelle}")
+        #print(f"Actual level: {self.niveau_actuel}, Image: {self.image_actuelle}")
 
-        # Construire le chemin complet de l'image
+        # Build the full path of the image
         chemin_image = os.path.join("img", self.image_actuelle)
-        # Charger l'image si elle existe
+        # Load image if it exists
         if os.path.exists(chemin_image):
             self.pixmap = QPixmap(chemin_image)
-            print(f"Image chargée: {chemin_image}")
+            #print(f"Image loaded: {chemin_image}")
         else:
             self.pixmap = None
-            print(f"Image non trouvée: {chemin_image}")
+            #print(f"Image not found: {chemin_image}")
 
-        # Activer le glisser-déposer
+        # Enable drag and drop
         self.setAcceptDrops(True)
 
     def charger_config(self):
-        """Charge la configuration depuis le fichier config.json"""
+        """
+        Loads the configuration from the config.json file
+        """
         try:
-            with open("config.json", "r") as fichier:
+            with open(self.config_json_path, "r") as fichier:
                 return json.load(fichier)
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print(f"Erreur lors du chargement de la configuration: {e}")
-            # Configuration par défaut en cas d'erreur
+            #print(f"error loading configuration: {e}")
+            # Default configuration in case of error
             return {
                 "path": "",
                 "pics": {"high": "pdf.jpg", "medium": "pdflow.jpg", "low": "pdfmedium.jpg"},
@@ -76,80 +82,90 @@ class CarreRouge(QWidget):
             }
 
     def sauvegarder_config(self):
-        """Sauvegarde la configuration dans le fichier config.json"""
+        """
+        Save the configuration to the config.json file
+        """
         try:
-            with open("config.json", "w") as fichier:
+            with open(self.config_json_path, "w") as fichier:
                 json.dump(self.config, fichier, indent=2)
-            print("Configuration sauvegardée avec succès")
+            #print("Configuration saved successfully")
         except Exception as e:
-            print(f"Erreur lors de la sauvegarde de la configuration: {e}")
+            print(f"Error saving configuration: {e}")
 
     def changer_image(self, niveau):
-        """Change l'image actuelle selon le niveau choisi (high, medium, low)"""
+        """
+        Changes the current image according to the chosen level (high, medium, low)
+        """
         if niveau in self.config["pics"]:
-            # Mettre à jour le niveau actuel
+            # Update current level
             self.niveau_actuel = niveau
 
-            # Récupérer le nom de l'image pour ce niveau
+            # Retrieve the image name for this level
             image_nom = self.config["pics"][niveau]
             self.image_actuelle = image_nom
 
-            # Mettre à jour la configuration
+            # Update the configuration
             self.config["current"] = {niveau: image_nom}
 
-            # Sauvegarder la configuration
+            # Save configuration
             self.sauvegarder_config()
 
-            # Construire le chemin complet de l'image
+            # Build the full path of the image
             chemin_image = os.path.join("img", image_nom)
 
-            # Charger la nouvelle image si elle existe
+            # Load the new image if it exists
             if os.path.exists(chemin_image):
                 self.pixmap = QPixmap(chemin_image)
-                print(f"Image changée pour: {niveau} ({chemin_image})")
+                #print(f"Image changed to: {niveau} ({chemin_image})")
             else:
                 self.pixmap = None
-                print(f"Image non trouvée: {chemin_image}")
+                #print(f"Image not found: {chemin_image}")
 
-            # Redessiner le widget
+            # Redraw the widget
             self.update()
 
     def paintEvent(self, event):
-        """Méthode appelée automatiquement pour dessiner le contenu de la fenêtre"""
+        """
+        Method called automatically to draw the window contents
+        """
         peintre = QPainter(self)
 
         if self.pixmap and not self.pixmap.isNull():
-            # Dessiner l'image si disponible
+            # Draw the image if available
             peintre.drawPixmap(0, 0, self.width(), self.height(), self.pixmap)
         else:
-            # Sinon, dessiner un carré rouge par défaut
-            peintre.setBrush(QColor(255, 0, 0))  # Rouge en RGB
+            # Otherwise, draw a red square by default
+            peintre.setBrush(QColor(255, 0, 0))  # Red in RGB
             peintre.drawRect(0, 0, self.width(), self.height())
 
     def parcourir_dossier(self):
-        """Ouvre une boîte de dialogue pour choisir un dossier et met à jour la configuration"""
+        """
+        Opens a dialog box to choose a folder and updates the configuration
+        """
         dossier = QFileDialog.getExistingDirectory(
             self,
-            "Sélectionner un dossier",
-            self.config.get("path", ""),  # Dossier initial basé sur la config
+            "Select a folder",
+            self.config.get("path", ""),  # Initial folder based on config
             QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
         )
 
-        # Si l'utilisateur a sélectionné un dossier (n'a pas annulé)
+        # If the user selected a folder (did not cancel)
         if dossier:
-            print(f"Dossier sélectionné: {dossier}")
+            #print(f"Selected folder: {dossier}")
 
-            # Mettre à jour la valeur dans la configuration
+            # Update the value in the configuration
             self.config["path"] = dossier
 
-            # Sauvegarder la configuration
+            # Save configuration
             self.sauvegarder_config()
 
     def afficher_menu(self, position):
-        """Affiche le menu contextuel à la position du clic droit"""
+        """
+        Displays the context menu at the right-click position
+        """
         menu = QMenu(self)
 
-        # Ajouter les options high, medium, low
+        # Add high, medium, low options
         high_action = QAction("High", self)
         high_action.triggered.connect(lambda: self.changer_image("high"))
         menu.addAction(high_action)
@@ -162,52 +178,60 @@ class CarreRouge(QWidget):
         low_action.triggered.connect(lambda: self.changer_image("low"))
         menu.addAction(low_action)
 
-        # Ajouter un séparateur
+        # Add a separator
         menu.addSeparator()
 
-        # Ajouter l'option "Parcourir"
-        parcourir_action = QAction("Parcourir", self)
+        # Add the "Browse" option
+        parcourir_action = QAction("Browse", self)
         parcourir_action.triggered.connect(self.parcourir_dossier)
         menu.addAction(parcourir_action)
 
-        # Ajouter un séparateur
+        # Add a separator
         menu.addSeparator()
 
-        # Ajouter l'option "Quitter" au menu
-        quitter_action = QAction("Quitter", self)
+        # Add "Exit" option to the menu
+        quitter_action = QAction("Quit", self)
         quitter_action.triggered.connect(QApplication.quit)
         menu.addAction(quitter_action)
 
-        # Afficher le menu à la position du clic
+        # Show menu at click position
         menu.exec(self.mapToGlobal(position))
 
     def mousePressEvent(self, event):
-        """Gère les événements de clic de souris"""
+        """
+        Handles mouse click events
+        """
         if event.button() == Qt.MouseButton.LeftButton:
-            # Enregistrer la position de départ pour permettre le déplacement
-            self.position_depart = QPoint(event.position().x(), event.position().y())
+            # Save the starting position to enable movement
+            self.starting_position = QPoint(event.position().x(), event.position().y())
 
     def mouseMoveEvent(self, event):
-        """Gère les événements de déplacement de la souris"""
-        if hasattr(self, 'position_depart'):
-            # Calculer le déplacement depuis la position initiale
-            delta = QPoint(event.position().x() - self.position_depart.x(),
-                           event.position().y() - self.position_depart.y())
+        """
+        Handles mouse movement events
+        """
+        if hasattr(self, 'starting_position'):
+            # Calculate the displacement from the initial position
+            delta = QPoint(event.position().x() - self.starting_position.x(),
+                           event.position().y() - self.starting_position.y())
 
-            # Déplacer la fenêtre
+            # move the window
             self.move(self.x() + delta.x(), self.y() + delta.y())
 
     def mouseReleaseEvent(self, event):
-        """Gère les événements de relâchement du bouton de la souris"""
+        """
+        Handles mouse button release events
+        """
         if event.button() == Qt.MouseButton.LeftButton:
-            # Supprimer la référence à la position de départ
-            if hasattr(self, 'position_depart'):
-                delattr(self, 'position_depart')
+            # Remove reference to starting position
+            if hasattr(self, 'starting_position'):
+                delattr(self, 'starting_position')
 
     def dragEnterEvent(self, event: QDragEnterEvent):
-        """Gère les événements de glisser-déposer - accepte l'événement si c'est un fichier PDF"""
+        """
+        Handles drag and drop events - accepts the event if it is a PDF file
+        """
         if event.mimeData().hasUrls():
-            # Vérifier si au moins un des fichiers est un PDF
+            # Check if at least one of the files is a PDF
             for url in event.mimeData().urls():
                 fichier_path = url.toLocalFile()
                 if fichier_path.lower().endswith('.pdf'):
@@ -215,68 +239,72 @@ class CarreRouge(QWidget):
                     return
 
     def dropEvent(self, event: QDropEvent):
-        """Gère l'événement de dépôt de fichier"""
-        # Récupérer les URLs des fichiers déposés
+        """
+        Gère l'événement de dépôt de fichier
+        """
+        # Retrieve URLs of uploaded files
         for url in event.mimeData().urls():
             fichier_path = url.toLocalFile()
 
-            # Traiter uniquement les fichiers PDF
+            # Process only PDF files
             if fichier_path.lower().endswith('.pdf'):
                 self.compresser_pdf(fichier_path)
 
     def compresser_pdf(self, fichier_path: str):
-        """Compresse un fichier PDF déposé sur le carré"""
-        # Récupérer le niveau actuel (high, medium, low)
+        """
+        Compress a PDF file placed on the square
+        """
+        # Retrieve current level (high, medium, low)
         niveau = self.niveau_actuel
 
-        # Récupérer le dossier de sortie depuis la configuration
+        # Retrieve output folder from configuration
         dossier_sortie = self.config.get("path", "")
 
-        # Si le dossier de sortie est vide, utiliser le dossier du script
+        # If the output folder is empty, use the script folder
         if not dossier_sortie:
             dossier_sortie = os.path.dirname(os.path.abspath(__file__))
 
-        # Extraire le nom du fichier
+        # Extract file name
         nom_fichier = os.path.basename(fichier_path)
         nom_base, _ = os.path.splitext(nom_fichier)
 
-        # Générer le nom du fichier de sortie
-        # Utiliser Path pour gérer correctement les chemins Windows
+        # Generate the output filename
+        # Use Path to properly manage Windows paths
         fichier_entrant = str(Path(fichier_path).absolute())
         fichier_sortie = str(Path(dossier_sortie) / f"{nom_base}.pdf")
 
-        print(f"Compression du fichier: {fichier_entrant}")
-        print(f"Niveau de compression: {niveau}")
-        print(f"Fichier de sortie: {fichier_sortie}")
+        #print(f"File compression: {fichier_entrant}")
+        #print(f"Compression level: {niveau}")
+        #print(f"Output file: {fichier_sortie}")
 
         try:
-            # Créer une instance de GhostConverter
+            # Create an instance of GhostConverter
             converter = GhostConverter(fichier_path, fichier_sortie, niveau)
 
-            # Lancer la compression
+            # Start compression
             converter.launch()
 
-            print(f"Compression terminée: {fichier_sortie}")
+            #print(f"Compression completed: {fichier_sortie}")
         except Exception as e:
-            print(f"Erreur lors de la compression: {e}")
+            print(f"Error while compressing: {e}")
 
 
-# Point d'entrée de l'application
+# Application entry point
 if __name__ == "__main__":
-    print("Démarrage de l'application...")
+    #print("Starting the application...")
 
-    # Créer l'application
+    # Create the application
     app = QApplication(sys.argv)
 
-    # Créer et afficher notre widget personnalisé
+    # Create and display our custom widget
     fenetre = CarreRouge()
     fenetre.show()
 
-    print("Fenêtre affichée")
+    #print("Window displayed")
 
-    # Lancer la boucle d'événements principale
+    # Start the main event loop
     try:
         sys.exit(app.exec())
     except AttributeError:
-        # Pour les versions plus anciennes de PySide6
+        # For older versions of PySide6
         sys.exit(app.exec_())

@@ -2,8 +2,10 @@ import json
 from pathlib import Path
 import subprocess
 
+from config import ConfigJson
 
-class GhostConverter():
+
+class GhostConverter:
     def __init__(self, incoming_file: str, output_file: str, type: str):
         """
         Compressing PDFs with GhostScript
@@ -18,8 +20,9 @@ class GhostConverter():
         self.type = type
 
         self.ghostscript = str(Path("bin\\gswin64c.exe").absolute())
-        self.config = "config.json"
 
+        config_json = ConfigJson(Path("config.json"))
+        self.config_json_path = config_json.determine_config_path()
 
     def load_config(self) -> dict:
         """
@@ -28,7 +31,7 @@ class GhostConverter():
         Returns:
         dict: Configuration parameters for each compression level
         """
-        with open(self.config, 'r') as file:
+        with open(self.config_json_path, 'r') as file:
             return json.load(file)
 
 
@@ -42,14 +45,17 @@ class GhostConverter():
         # Do not split the command, but directly create a list of arguments
         command_liste = []
 
-        # base arguments
-        base_args = [
-            "-sDEVICE=pdfwrite",
-            "-dNOPAUSE",
-            "-dQUIET",
-            "-dBATCH",
-            "-dCompatibilityLevel=1.4"
-        ]
+        if config["base_args"]:
+            base_args = config["base_args"]
+        else:
+            # base arguments
+            base_args = [
+                "-sDEVICE=pdfwrite",
+                "-dNOPAUSE",
+                "-dQUIET",
+                "-dBATCH",
+                "-dCompatibilityLevel=1.4"
+            ]
         command_liste.extend(base_args)
 
         # Add the specific parameters from the configuration file
@@ -84,12 +90,12 @@ class GhostConverter():
 # Example of use
 if __name__ == "__main__":
     # Example to compress a file with different quality levels
-    fichier_original = r"D:\DOCUMENTS\PROGRAMMATION\Python\Projets\reduire_poids_pdf\bin\Gfsdffg.pdf"
+    fichier_original = r"C:\temp\Gfsdffg.pdf"
 
     all_types = ["high", "medium", "low"]
 
     for type in all_types:
-        convert = GhostConverter(fichier_original, f"D:\\Mes Telechargements\\exemple_{type}.pdf", type)
+        convert = GhostConverter(fichier_original, f"C:\\temp\\exemple_{type}.pdf", type)
         convert.launch()
 
 

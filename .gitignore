@@ -8,10 +8,9 @@
 __pycache__/
 
 # mes fichiers
-assets/
+compil/
 bin/
 old/
-interfaceia.py
-exemple_high.pdf
-exemple_low.pdf
-exemple_medium.pdf
+setup_files.iss
+DragDropPDF.7z
+Setup_DragDropPDF_1.0.exe
