@@ -4,6 +4,10 @@
 
 ![Static Badge](https://img.shields.io/badge/status-final-blue)
 
+A small gesture, a big support! Buy me a coffee ☕ if you appreciate my work. Thanks in advance!
+
+[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/yann83)
+
 ## Licence
 
 AGPL-3.0 needed to add Ghostscript binary to DragDropPDf package
