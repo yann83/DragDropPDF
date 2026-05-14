@@ -196,7 +196,7 @@ class CarreRouge(QWidget):
         font.setPointSize(7)
         font.setBold(True)
         painter.setFont(font)
-        painter.drawText(0, h - 6, w, 10, Qt.AlignmentFlag.AlignHCenter, "conversion…")
+        #painter.drawText(0, h - 6, w, 10, Qt.AlignmentFlag.AlignHCenter, "conversion…")
 
     def parcourir_dossier(self):
         dossier = QFileDialog.getExistingDirectory(

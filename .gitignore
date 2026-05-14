@@ -16,3 +16,8 @@ DragDropPDF.7z
 Setup_DragDropPDF_1.0.exe
 desktop.ini
 memo.md
+execonf.json
+interface.spec
+output/DragDropPDF.exe
+Setup_DragDropPDF_1.1.exe
+auto-py-to-exe_conf.json
