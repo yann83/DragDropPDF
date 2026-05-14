@@ -3,11 +3,33 @@ import json
 import os
 from pathlib import Path
 from PySide6.QtWidgets import QApplication, QWidget, QMenu, QFileDialog
-from PySide6.QtCore import Qt, QPoint
-from PySide6.QtGui import QColor, QPainter, QAction, QPixmap, QDragEnterEvent, QDropEvent
+from PySide6.QtCore import Qt, QPoint, QThread, Signal, QTimer
+from PySide6.QtGui import QColor, QPainter, QAction, QPixmap, QDragEnterEvent, QDropEvent, QPen
 
 from core import GhostConverter
 from config import ConfigJson
+
+
+class ConversionThread(QThread):
+    """
+    Thread dedicated to PDF conversion to avoid blocking the UI
+    """
+    finished = Signal()
+    error = Signal(str)
+
+    def __init__(self, fichier_path: str, fichier_sortie: str, niveau: str):
+        super().__init__()
+        self.fichier_path = fichier_path
+        self.fichier_sortie = fichier_sortie
+        self.niveau = niveau
+
+    def run(self):
+        try:
+            converter = GhostConverter(self.fichier_path, self.fichier_sortie, self.niveau)
+            converter.launch()
+            self.finished.emit()
+        except Exception as e:
+            self.error.emit(str(e))
 
 
 class CarreRouge(QWidget):
@@ -21,60 +43,80 @@ class CarreRouge(QWidget):
         self.config = self.charger_config()
 
         # Window configuration
-        self.setWindowTitle("DropPDF")  # window title
-        self.setFixedSize(100, 100)  # Fixed size of 100x100 pixels
+        self.setWindowTitle("DropPDF")
+        self.setFixedSize(100, 100)
 
         # Remove window borders and force foreground
         self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint |  # Removing borders
-            Qt.WindowType.WindowStaysOnTopHint  # Window always in the foreground
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.WindowStaysOnTopHint
         )
 
         # Allow mouse tracking for right click
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.afficher_menu)
 
-        # Position the square in the bottom right corner of the screen, 100 pixels from the edge
-        # Get the screen dimensions
+        # Position the square in the bottom right corner of the screen
         screen_rect = QApplication.primaryScreen().geometry()
         screen_width = screen_rect.width()
         screen_height = screen_rect.height()
 
-        # Calculate position (bottom right 100 pixels from edge)
         pos_x = screen_width - self.width() - 100
         pos_y = screen_height - self.height() - 100
-
-        # Apply position
         self.move(pos_x, pos_y)
 
         # Determine current level and image from configuration
         self.niveau_actuel = next(iter(self.config["current"].keys()))
         self.image_actuelle = self.config["current"][self.niveau_actuel]
-        #print(f"Actual level: {self.niveau_actuel}, Image: {self.image_actuelle}")
 
         # Build the full path of the image
         chemin_image = os.path.join("img", self.image_actuelle)
-        # Load image if it exists
         if os.path.exists(chemin_image):
             self.pixmap = QPixmap(chemin_image)
-            #print(f"Image loaded: {chemin_image}")
         else:
             self.pixmap = None
-            #print(f"Image not found: {chemin_image}")
+
+        # --- Loading animation state ---
+        self.is_converting = False
+        self.spinner_angle = 0
+
+        # Timer for the spinner animation (updates every 30ms ≈ 33fps)
+        self.spinner_timer = QTimer(self)
+        self.spinner_timer.timeout.connect(self._update_spinner)
+
+        # Active conversion threads (kept alive until finished)
+        self._conversion_threads = []
 
         # Enable drag and drop
         self.setAcceptDrops(True)
 
+    def _update_spinner(self):
+        """Advances the spinner angle and triggers a repaint"""
+        self.spinner_angle = (self.spinner_angle + 8) % 360
+        self.update()
+
+    def _start_spinner(self):
+        """Switches the widget into loading mode"""
+        self.is_converting = True
+        self.spinner_angle = 0
+        self.spinner_timer.start(30)
+        self.update()
+
+    def _stop_spinner(self):
+        """Switches the widget back to normal mode if no conversion is running"""
+        # Only stop when every thread has finished
+        alive = [t for t in self._conversion_threads if t.isRunning()]
+        self._conversion_threads = alive
+        if not alive:
+            self.is_converting = False
+            self.spinner_timer.stop()
+            self.update()
+
     def charger_config(self):
-        """
-        Loads the configuration from the config.json file
-        """
         try:
             with open(self.config_json_path, "r") as fichier:
                 return json.load(fichier)
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            #print(f"error loading configuration: {e}")
-            # Default configuration in case of error
+        except (FileNotFoundError, json.JSONDecodeError):
             return {
                 "path": "",
                 "pics": {"high": "pdf.jpg", "medium": "pdflow.jpg", "low": "pdfmedium.jpg"},
@@ -82,90 +124,94 @@ class CarreRouge(QWidget):
             }
 
     def sauvegarder_config(self):
-        """
-        Save the configuration to the config.json file
-        """
         try:
             with open(self.config_json_path, "w") as fichier:
                 json.dump(self.config, fichier, indent=2)
-            #print("Configuration saved successfully")
         except Exception as e:
             print(f"Error saving configuration: {e}")
 
     def changer_image(self, niveau):
-        """
-        Changes the current image according to the chosen level (high, medium, low)
-        """
         if niveau in self.config["pics"]:
-            # Update current level
             self.niveau_actuel = niveau
-
-            # Retrieve the image name for this level
             image_nom = self.config["pics"][niveau]
             self.image_actuelle = image_nom
-
-            # Update the configuration
             self.config["current"] = {niveau: image_nom}
-
-            # Save configuration
             self.sauvegarder_config()
 
-            # Build the full path of the image
             chemin_image = os.path.join("img", image_nom)
-
-            # Load the new image if it exists
             if os.path.exists(chemin_image):
                 self.pixmap = QPixmap(chemin_image)
-                #print(f"Image changed to: {niveau} ({chemin_image})")
             else:
                 self.pixmap = None
-                #print(f"Image not found: {chemin_image}")
 
-            # Redraw the widget
             self.update()
 
     def paintEvent(self, event):
-        """
-        Method called automatically to draw the window contents
-        """
         peintre = QPainter(self)
+        peintre.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        if self.pixmap and not self.pixmap.isNull():
-            # Draw the image if available
+        if self.is_converting:
+            self._draw_spinner(peintre)
+        elif self.pixmap and not self.pixmap.isNull():
             peintre.drawPixmap(0, 0, self.width(), self.height(), self.pixmap)
         else:
-            # Otherwise, draw a red square by default
-            peintre.setBrush(QColor(255, 0, 0))  # Red in RGB
+            peintre.setBrush(QColor(255, 0, 0))
             peintre.drawRect(0, 0, self.width(), self.height())
 
+    def _draw_spinner(self, painter: QPainter):
+        """Draws an animated spinner centred in the widget"""
+        w, h = self.width(), self.height()
+
+        # Dark background
+        painter.setBrush(QColor(30, 30, 30))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRect(0, 0, w, h)
+
+        # Spinner arc
+        margin = 14
+        rect_size = min(w, h) - margin * 2
+
+        cx = (w - rect_size) // 2
+        cy = (h - rect_size) // 2
+
+        # Faint track circle
+        track_pen = QPen(QColor(80, 80, 80), 6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        painter.setPen(track_pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(cx, cy, rect_size, rect_size)
+
+        # Animated arc (gradient-like via two arcs)
+        arc_pen = QPen(QColor(220, 60, 60), 6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        painter.setPen(arc_pen)
+
+        from PySide6.QtCore import QRect
+        rect = QRect(cx, cy, rect_size, rect_size)
+        start_angle = (90 - self.spinner_angle) * 16   # Qt uses 1/16th degrees
+        span_angle = -270 * 16                          # 270° arc
+        painter.drawArc(rect, start_angle, span_angle)
+
+        # Small "PDF" label below the spinner
+        painter.setPen(QColor(200, 200, 200))
+        font = painter.font()
+        font.setPointSize(7)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.drawText(0, h - 6, w, 10, Qt.AlignmentFlag.AlignHCenter, "conversion…")
+
     def parcourir_dossier(self):
-        """
-        Opens a dialog box to choose a folder and updates the configuration
-        """
         dossier = QFileDialog.getExistingDirectory(
             self,
             "Select a folder",
-            self.config.get("path", ""),  # Initial folder based on config
+            self.config.get("path", ""),
             QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
         )
-
-        # If the user selected a folder (did not cancel)
         if dossier:
-            #print(f"Selected folder: {dossier}")
-
-            # Update the value in the configuration
             self.config["path"] = dossier
-
-            # Save configuration
             self.sauvegarder_config()
 
     def afficher_menu(self, position):
-        """
-        Displays the context menu at the right-click position
-        """
         menu = QMenu(self)
 
-        # Add high, medium, low options
         high_action = QAction("High", self)
         high_action.triggered.connect(lambda: self.changer_image("high"))
         menu.addAction(high_action)
@@ -178,133 +224,94 @@ class CarreRouge(QWidget):
         low_action.triggered.connect(lambda: self.changer_image("low"))
         menu.addAction(low_action)
 
-        # Add a separator
         menu.addSeparator()
 
-        # Add the "Browse" option
         parcourir_action = QAction("Browse", self)
         parcourir_action.triggered.connect(self.parcourir_dossier)
         menu.addAction(parcourir_action)
 
-        # Add a separator
         menu.addSeparator()
 
-        # Add "Exit" option to the menu
         quitter_action = QAction("Quit", self)
         quitter_action.triggered.connect(QApplication.quit)
         menu.addAction(quitter_action)
 
-        # Show menu at click position
         menu.exec(self.mapToGlobal(position))
 
     def mousePressEvent(self, event):
-        """
-        Handles mouse click events
-        """
         if event.button() == Qt.MouseButton.LeftButton:
-            # Save the starting position to enable movement
             self.starting_position = QPoint(event.position().x(), event.position().y())
 
     def mouseMoveEvent(self, event):
-        """
-        Handles mouse movement events
-        """
         if hasattr(self, 'starting_position'):
-            # Calculate the displacement from the initial position
             delta = QPoint(event.position().x() - self.starting_position.x(),
                            event.position().y() - self.starting_position.y())
-
-            # move the window
             self.move(self.x() + delta.x(), self.y() + delta.y())
 
     def mouseReleaseEvent(self, event):
-        """
-        Handles mouse button release events
-        """
         if event.button() == Qt.MouseButton.LeftButton:
-            # Remove reference to starting position
             if hasattr(self, 'starting_position'):
                 delattr(self, 'starting_position')
 
     def dragEnterEvent(self, event: QDragEnterEvent):
-        """
-        Handles drag and drop events - accepts the event if it is a PDF file
-        """
         if event.mimeData().hasUrls():
-            # Check if at least one of the files is a PDF
             for url in event.mimeData().urls():
-                fichier_path = url.toLocalFile()
-                if fichier_path.lower().endswith('.pdf'):
+                if url.toLocalFile().lower().endswith('.pdf'):
                     event.acceptProposedAction()
                     return
 
     def dropEvent(self, event: QDropEvent):
-        """
-        Gère l'événement de dépôt de fichier
-        """
-        # Retrieve URLs of uploaded files
         for url in event.mimeData().urls():
             fichier_path = url.toLocalFile()
-
-            # Process only PDF files
             if fichier_path.lower().endswith('.pdf'):
                 self.compresser_pdf(fichier_path)
 
     def compresser_pdf(self, fichier_path: str):
-        """
-        Compress a PDF file placed on the square
-        """
-        # Retrieve current level (high, medium, low)
         niveau = self.niveau_actuel
-
-        # Retrieve output folder from configuration
         dossier_sortie = self.config.get("path", "")
 
-        # If the output folder is empty, use the script folder
         if not dossier_sortie:
             dossier_sortie = os.path.dirname(os.path.abspath(__file__))
 
-        # Extract file name
         nom_fichier = os.path.basename(fichier_path)
         nom_base, _ = os.path.splitext(nom_fichier)
 
-        # Generate the output filename
-        # Use Path to properly manage Windows paths
         fichier_entrant = str(Path(fichier_path).absolute())
         fichier_sortie = str(Path(dossier_sortie) / f"{nom_base}.pdf")
 
-        #print(f"File compression: {fichier_entrant}")
-        #print(f"Compression level: {niveau}")
-        #print(f"Output file: {fichier_sortie}")
+        print(f"File compression: {fichier_entrant}")
+        print(f"Compression level: {niveau}")
+        print(f"Output file: {fichier_sortie}")
 
-        try:
-            # Create an instance of GhostConverter
-            converter = GhostConverter(fichier_path, fichier_sortie, niveau)
+        # Start the spinner before launching the thread
+        self._start_spinner()
 
-            # Start compression
-            converter.launch()
+        # Create and configure the worker thread
+        thread = ConversionThread(fichier_entrant, fichier_sortie, niveau)
+        thread.finished.connect(self._on_conversion_finished)
+        thread.error.connect(self._on_conversion_error)
 
-            #print(f"Compression completed: {fichier_sortie}")
-        except Exception as e:
-            print(f"Error while compressing: {e}")
+        # Keep a reference so the thread is not garbage-collected
+        self._conversion_threads.append(thread)
+        thread.start()
+
+    def _on_conversion_finished(self):
+        print("Conversion completed.")
+        self._stop_spinner()
+
+    def _on_conversion_error(self, message: str):
+        print(f"Error while compressing: {message}")
+        self._stop_spinner()
 
 
 # Application entry point
 if __name__ == "__main__":
-    #print("Starting the application...")
-
-    # Create the application
     app = QApplication(sys.argv)
 
-    # Create and display our custom widget
     fenetre = CarreRouge()
     fenetre.show()
 
-    #print("Window displayed")
-
-    # Start the main event loop
     try:
         sys.exit(app.exec())
     except AttributeError:
-        # For older versions of PySide6
         sys.exit(app.exec_())

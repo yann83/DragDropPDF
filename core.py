@@ -75,7 +75,12 @@ class GhostConverter:
         try:
             args = [self.ghostscript] + self.compress()
             # print(f"Order execution: {args}")
-            process = subprocess.run(args, capture_output=True, text=True)
+            process = subprocess.run(
+                args,
+                capture_output=True,
+                text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW  # Hides the black console on Windows
+            )
 
             if process.returncode != 0:
                 print(f"Error GhostScript (code {process.returncode}):")
